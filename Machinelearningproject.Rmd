@@ -1,0 +1,117 @@
+---
+title: "Machine learning project"
+author: "Keilor Rojas"
+date: "26 de julio de 2015"
+output: html_document
+---
+
+The aim of this project is to building model that can determine how well people 
+perform barbell lifts, based on data from accelerometers on the belt, forearm, arm, 
+and dumbell collected from 6 participants and freely available in the following link
+[http://groupware.les.inf.puc-rio.br/har]
+
+##open packages
+```{r,results='hide'}
+library(caret)
+library(ggplot2)
+library(VIM)
+library(gridExtra)
+library(knitr)
+library(rpart)
+library(rattle)
+library(MASS)
+library(randomForest)
+library(GGally)
+library(klaR)
+```
+
+##load data
+```{r,results='hide'}
+set.seed(345)
+tr <- read.csv("pml-training.csv")
+te <- read.csv("pml-testing.csv")
+names(tr)
+str(tr)
+```
+
+##simplify analysis by removing some noise columns and uncomplete data
+```{r}
+columns <- "^(kurtosis|skewness|min|max|stddev|total|var|avg|ampl)"
+data <- tr[,grep(columns,names(tr),invert=T)]
+table(complete.cases(data))
+```
+
+##impute the data
+```{r,results='hide'}
+con <- aggr(tr,plot=F)
+summary(con)
+```
+```{r}
+table(con$missings$Count)
+data <- data[,grep("^(num_window|cvtd_timestamp|X|new_window)",names(data),invert=T)]
+```
+
+##subdivide training set into subtraining and validation set
+```{r}
+inTraining <- createDataPartition(y=data$classe,p=.75,list=F)
+training <- data[inTraining,]
+validation <- data[-inTraining,]
+
+tr_pred <- training[,-c(1,52)]
+tr_out <- training[,c(52)]
+
+val_pred <- validation[,-c(52)]
+val_outcome <- validation[,c(52)]
+```
+
+##model1 Regression tree with preprocessing of data and traicontrol
+```{r}
+trcontrol <- trainControl(method="cv",number=5,allowParallel=T)
+model1 <- train(tr_out ~ ., data=tr_pred, preProcess=c("center","scale"),
+                method="rpart", trControl=trcontrol)
+model1
+model1$finalModel
+```
+
+```{r, echo=FALSE}
+fancyRpartPlot(model1$finalModel)
+```
+
+provides a nice visual indication of main predictor variables but accuracy is still low
+
+##model2 Lda
+```{r}
+model2 <- train(tr_out ~ .,data=tr_pred, preProcess=c("center","scale"),
+                method="lda", trControl=trcontrol)
+model2
+```
+lda had a better performance than regression tree model but accuracy is still low
+
+##model3 Random Forest
+```{r}
+model3 <- train(tr_out ~ .,data=tr_pred, preProcess=c("center","scale"),
+                method="rf", prof = TRUE, trControl=trcontrol)
+model3
+```
+this model has a much better performance. The accuracy was 99%
+
+
+##cross validation with validation subset and expected out of sample error
+```{r}
+pred <- predict(model3, validation)
+confMat <- confusionMatrix(pred, val_outcome)
+confMat
+```
+Random Forest model provided High accuracy and low error
+
+##prediction for 20 cases of test set 
+```{r}
+pred2 <- predict(model3, te)
+pred2
+```
+this will lead to the predictions of the 20 cases
+
+##Acknowledgment
+Data were kindly provided by http://groupware.les.inf.puc-rio.br/har
+
+
